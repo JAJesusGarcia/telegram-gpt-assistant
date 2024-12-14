@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
-import Conversation from './models/Conversation';
+import Conversation from './models/Conversation.js';
 import mongoose from 'mongoose';
 
 dotenv.config();
