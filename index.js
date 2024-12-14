@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import Conversation from './models/Conversation';
 import mongoose from 'mongoose';
-import { log } from 'console';
 
 dotenv.config();
 
@@ -69,12 +68,53 @@ const saveConversation = async (userId, message) => {
 // Telegram Bot setup
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
-const handleUserMessage = async () => {
-  //
-};
+const handleUserMessage = async (User, message) => {
+  User.Conversation.push({ sender: 'user', text: message });
 
-// Get a response from ChatGPT
-const gptReply = await getResponseFromChatGPT(message);
+  let reply = '';
+  switch (User.state) {
+    case 'initial':
+      reply = 'Hi! Are you looking for a health insurance plan? (Yes/No)';
+      User.state = 'askingHealthInsurance';
+      break;
+
+    case 'askingHealthInsurance':
+      if (message.toLowerCase() === 'yes') {
+        reply = 'Great! What is your family size?';
+        User.state = 'askingFamilySize';
+      } else {
+        reply =
+          'Alright. Let me know if you need assistance with anything else!';
+        User.state = 'initial';
+      }
+      break;
+
+    case 'asikingFamilySize':
+      reply = 'What is your household income?';
+      User.state = 'askingIncome';
+      break;
+
+    case 'askingIcome':
+      reply = 'What is your gender?';
+      User.state = 'askinGender';
+      break;
+
+    case 'askinGender':
+      reply =
+        'Thank you for the information! If you have any more questions, feel to ask.';
+      User.state = 'initial';
+      break;
+  }
+
+  // Get a response from ChatGPT
+  const gptReply = await getResponseFromChatGPT(message);
+  if (gptReply) {
+    reply += `\n\nChatGPT says: ${gptReply}`;
+  }
+
+  User.Conversation.push({ sender: 'bot', text: reply });
+  return reply;
+};
 
 // Main bot logic
 const motherJob = async () => {
