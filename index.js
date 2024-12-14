@@ -9,10 +9,7 @@ dotenv.config();
 // MongoDB connection
 const connectToDatabase = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
@@ -42,14 +39,14 @@ const getResponseFromChatGPT = async (text) => {
       prompt: text,
       max_tokens: 150,
     });
-    return response.data.choise[0].text.trim();
+    return response.data.choices[0].text.trim();
   } catch (error) {
     console.error('Error with OpenAI:', error);
     return 'I had trouble processing that. Please try again.';
   }
 };
 
-// Save conversartion to MongoDB
+// Save conversation to MongoDB
 const saveConversation = async (userId, messages) => {
   try {
     const existingConversation = await Conversation.findOne({ userId });
@@ -70,7 +67,7 @@ const saveConversation = async (userId, messages) => {
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
 const handleUserMessage = async (User, message) => {
-  User.Conversation.push({ sender: 'user', text: message });
+  User.conversation.push({ sender: 'user', text: message });
 
   let reply = '';
   switch (User.state) {
@@ -90,19 +87,19 @@ const handleUserMessage = async (User, message) => {
       }
       break;
 
-    case 'asikingFamilySize':
+    case 'askingFamilySize':
       reply = 'What is your household income?';
       User.state = 'askingIncome';
       break;
 
-    case 'askingIcome':
+    case 'askingIncome':
       reply = 'What is your gender?';
-      User.state = 'askinGender';
+      User.state = 'askingGender';
       break;
 
-    case 'askinGender':
+    case 'askingGender':
       reply =
-        'Thank you for the information! If you have any more questions, feel to ask.';
+        'Thank you for the information! If you have any more questions, feel free to ask.';
       User.state = 'initial';
       break;
   }
@@ -113,7 +110,7 @@ const handleUserMessage = async (User, message) => {
     reply += `\n\nChatGPT says: ${gptReply}`;
   }
 
-  User.Conversation.push({ sender: 'bot', text: reply });
+  User.conversation.push({ sender: 'bot', text: reply });
   return reply;
 };
 
