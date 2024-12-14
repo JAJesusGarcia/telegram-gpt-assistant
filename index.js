@@ -39,10 +39,14 @@ const getResponseFromChatGPT = async (text) => {
       prompt: text,
       max_tokens: 150,
     });
-    return response.data.choices[0].text.trim();
+
+    const gptReply = response.data.choices[0].text.trim();
+    return (
+      gptReply || 'Sorry, I couldn’t generate a response. Please try again.'
+    );
   } catch (error) {
-    console.error('Error with OpenAI:', error);
-    return 'I had trouble processing that. Please try again.';
+    console.error('Error with OpenAI:', error.message);
+    return null;
   }
 };
 
@@ -102,10 +106,14 @@ const handleUserMessage = async (User, message) => {
         'Thank you for the information! If you have any more questions, feel free to ask.';
       User.state = 'initial';
       break;
+
+    default:
+      reply = 'I didn’t quite get that. Could you try again?';
   }
 
-  // Get a response from ChatGPT
+  // Obtener respuesta de ChatGPT
   const gptReply = await getResponseFromChatGPT(message);
+
   if (gptReply) {
     reply += `\n\nChatGPT says: ${gptReply}`;
   }
@@ -124,6 +132,13 @@ const motherJob = async () => {
     bot.on('message', async (msg) => {
       const chatId = msg.chat.id;
       User.userId = chatId;
+
+      // If it's the first message, send the initial question
+      if (User.state === 'initial') {
+        const initialReply = await handleUserMessage(User, '');
+        bot.sendMessage(chatId, initialReply);
+        return;
+      }
 
       const reply = await handleUserMessage(User, msg.text);
 
