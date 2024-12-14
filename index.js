@@ -41,12 +41,9 @@ const getResponseFromChatGPT = async (text) => {
 
     return response.choices[0].message.content.trim();
   } catch (error) {
-    console.error(
-      'Error with OpenAI:',
-      error.response?.status,
-      error.response?.data || error.message,
-    );
-    return 'I had trouble processing that. Please try again.';
+    console.error('Error with OpenAI:', error);
+    // Retorna un mensaje genérico si hay un error con OpenAI
+    return;
   }
 };
 
