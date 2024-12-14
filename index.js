@@ -50,7 +50,7 @@ const getResponseFromChatGPT = async (text) => {
 };
 
 // Save conversartion to MongoDB
-const saveConversation = async (userId, message) => {
+const saveConversation = async (userId, messages) => {
   try {
     const existingConversation = await Conversation.findOne({ userId });
     if (existingConversation) {
