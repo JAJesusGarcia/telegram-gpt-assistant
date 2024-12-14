@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import Conversation from './models/Conversation.js';
 import mongoose from 'mongoose';
+import { Configuration, OpenAIApi } from 'openai';
 
 dotenv.config();
 
