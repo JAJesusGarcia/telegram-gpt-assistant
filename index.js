@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import Conversation from './models/Conversation.js';
 import mongoose from 'mongoose';
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from 'openai';
 
 dotenv.config();
 
@@ -17,13 +17,6 @@ const connectToDatabase = async () => {
   }
 };
 
-// OpenAI configuration
-const openaiConfig = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const openai = new OpenAIApi(openaiConfig);
-
 // Set initial user state
 const setUser = () => ({
   userId: null,
@@ -31,22 +24,29 @@ const setUser = () => ({
   state: 'initial',
 });
 
+// OpenAI configuration
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
 // Process user input with OpenAI
 const getResponseFromChatGPT = async (text) => {
   try {
-    const response = await openai.createCompletion({
+    const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
-      prompt: text,
+      messages: [{ role: 'user', content: text }],
       max_tokens: 150,
+      temperature: 0.7,
     });
 
-    const gptReply = response.data.choices[0].text.trim();
-    return (
-      gptReply || 'Sorry, I couldn’t generate a response. Please try again.'
-    );
+    return response.choices[0].message.content.trim();
   } catch (error) {
-    console.error('Error with OpenAI:', error.message);
-    return null;
+    console.error(
+      'Error with OpenAI:',
+      error.response?.status,
+      error.response?.data || error.message,
+    );
+    return 'I had trouble processing that. Please try again.';
   }
 };
 
