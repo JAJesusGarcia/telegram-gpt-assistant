@@ -118,5 +118,24 @@ const handleUserMessage = async (User, message) => {
 
 // Main bot logic
 const motherJob = async () => {
-  //
+  try {
+    await connectToDatabase();
+
+    const User = setUser();
+
+    bot.on('message', async (msg) => {
+      const chatId = msg.chat.id;
+      User.userId = chatId;
+
+      const reply = await handleUserMessage(User, msg.text);
+
+      await saveConversation(chatId, User.conversation);
+
+      bot.sendMessage(chatId, reply);
+    });
+  } catch (error) {
+    console.error('Error in motherJob:', error);
+  }
 };
+
+motherJob();
