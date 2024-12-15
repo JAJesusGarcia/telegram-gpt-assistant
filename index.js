@@ -1,4 +1,3 @@
-import express from 'express';
 import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import mongoose from 'mongoose';
