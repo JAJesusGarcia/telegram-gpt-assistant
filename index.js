@@ -1,3 +1,9 @@
+import {
+  isValidFamilySize,
+  isValidIncome,
+  isValidGender,
+  getErrorMessage,
+} from './validators.js';
 import dotenv from 'dotenv';
 import TelegramBot from 'node-telegram-bot-api';
 import Conversation from './models/Conversation.js';
@@ -67,10 +73,19 @@ const saveConversation = async (userId, messages) => {
 // Telegram Bot setup
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
+import {
+  isValidFamilySize,
+  isValidIncome,
+  isValidGender,
+  getErrorMessage,
+} from './validators.js';
+
 const handleUserMessage = async (User, message) => {
   User.conversation.push({ sender: 'user', text: message });
 
   let reply = '';
+  let validResponse = true;
+
   switch (User.state) {
     case 'initial':
       reply = 'Hi! Are you looking for a health insurance plan? (Yes/No)';
@@ -81,38 +96,56 @@ const handleUserMessage = async (User, message) => {
       if (message.toLowerCase() === 'yes') {
         reply = 'Great! What is your family size?';
         User.state = 'askingFamilySize';
-      } else {
+      } else if (message.toLowerCase() === 'no') {
         reply =
           'Alright. Let me know if you need assistance with anything else!';
         User.state = 'initial';
+      } else {
+        validResponse = false;
+        reply = 'Please respond with "Yes" or "No".';
       }
       break;
 
     case 'askingFamilySize':
-      reply = 'What is your household income?';
-      User.state = 'askingIncome';
+      if (isValidFamilySize(message)) {
+        reply = 'What is your household income?';
+        User.state = 'askingIncome';
+      } else {
+        validResponse = false;
+        reply = getErrorMessage(User.state);
+      }
       break;
 
     case 'askingIncome':
-      reply = 'What is your gender?';
-      User.state = 'askingGender';
+      if (isValidIncome(message)) {
+        reply = 'What is your gender?';
+        User.state = 'askingGender';
+      } else {
+        validResponse = false;
+        reply = getErrorMessage(User.state);
+      }
       break;
 
     case 'askingGender':
-      reply =
-        'Thank you for the information! If you have any more questions, feel free to ask.';
-      User.state = 'initial';
+      if (isValidGender(message)) {
+        reply =
+          'Thank you for the information! If you have any more questions, feel free to ask.';
+        User.state = 'initial';
+      } else {
+        validResponse = false;
+        reply = getErrorMessage(User.state);
+      }
       break;
 
     default:
       reply = 'I didn’t quite get that. Could you try again?';
   }
 
-  // Obtener respuesta de ChatGPT
-  const gptReply = await getResponseFromChatGPT(message);
-
-  if (gptReply) {
-    reply += `\n\nChatGPT says: ${gptReply}`;
+  if (validResponse) {
+    const gptReply = await getResponseFromChatGPT(message);
+    if (gptReply) {
+      reply += `\n\nChatGPT says: ${gptReply}`;
+    }
   }
 
   User.conversation.push({ sender: 'bot', text: reply });
