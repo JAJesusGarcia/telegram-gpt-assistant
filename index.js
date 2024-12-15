@@ -15,18 +15,15 @@ dotenv.config();
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${TOKEN}`;
 
-const app = express();
-app.use(express.json());
-
 const bot = new TelegramBot(TOKEN, { webHook: true });
-
 bot.setWebHook(WEBHOOK_URL).then(() => {
   console.log(`Webhook configurado correctamente en ${WEBHOOK_URL}`);
 });
 
-app.post(`/bot${TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+// Manejar mensajes
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 'Hola, soy tu bot. ¿Cómo puedo ayudarte?');
 });
 
 // MongoDB connection
@@ -187,9 +184,3 @@ const motherJob = async () => {
 };
 
 motherJob();
-
-// Start the Express server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor Express ejecutándose en el puerto ${PORT}`);
-});
