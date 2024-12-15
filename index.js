@@ -1,21 +1,42 @@
+import express from 'express';
+import dotenv from 'dotenv';
+import TelegramBot from 'node-telegram-bot-api';
+import mongoose from 'mongoose';
+import OpenAI from 'openai';
+import Conversation from './models/Conversation.js';
 import {
   isValidFamilySize,
   isValidIncome,
   isValidGender,
   getErrorMessage,
 } from './validators.js';
-import dotenv from 'dotenv';
-import TelegramBot from 'node-telegram-bot-api';
-import Conversation from './models/Conversation.js';
-import mongoose from 'mongoose';
-import OpenAI from 'openai';
 
 dotenv.config();
+
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${TOKEN}`;
+
+const app = express();
+app.use(express.json());
+
+const bot = new TelegramBot(TOKEN, { webHook: true });
+
+bot.setWebHook(WEBHOOK_URL).then(() => {
+  console.log(`Webhook configurado correctamente en ${WEBHOOK_URL}`);
+});
+
+app.post(`/bot${TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // MongoDB connection
 const connectToDatabase = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
@@ -23,19 +44,17 @@ const connectToDatabase = async () => {
   }
 };
 
-// Set initial user state
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Helper functions
 const setUser = () => ({
   userId: null,
   conversation: [],
   state: 'initial',
 });
 
-// OpenAI configuration
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Process user input with OpenAI
 const getResponseFromChatGPT = async (text) => {
   try {
     const response = await openai.chat.completions.create({
@@ -45,15 +64,13 @@ const getResponseFromChatGPT = async (text) => {
       temperature: 0.7,
     });
 
-    return response.choices[0].message.content.trim();
+    return response?.choices[0]?.message?.content?.trim() || 'No response.';
   } catch (error) {
     console.error('Error with OpenAI:', error);
-    // Retorna un mensaje genérico si hay un error con OpenAI
-    return;
+    return 'Sorry, I couldn’t process that.';
   }
 };
 
-// Save conversation to MongoDB
 const saveConversation = async (userId, messages) => {
   try {
     const existingConversation = await Conversation.findOne({ userId });
@@ -69,16 +86,6 @@ const saveConversation = async (userId, messages) => {
     console.error('Error saving conversation:', error);
   }
 };
-
-// Telegram Bot setup
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-
-import {
-  isValidFamilySize,
-  isValidIncome,
-  isValidGender,
-  getErrorMessage,
-} from './validators.js';
 
 const handleUserMessage = async (User, message) => {
   User.conversation.push({ sender: 'user', text: message });
@@ -163,7 +170,6 @@ const motherJob = async () => {
       const chatId = msg.chat.id;
       User.userId = chatId;
 
-      // If it's the first message, send the initial question
       if (User.state === 'initial') {
         const initialReply = await handleUserMessage(User, '');
         bot.sendMessage(chatId, initialReply);
@@ -182,3 +188,9 @@ const motherJob = async () => {
 };
 
 motherJob();
+
+// Start the Express server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor Express ejecutándose en el puerto ${PORT}`);
+});
