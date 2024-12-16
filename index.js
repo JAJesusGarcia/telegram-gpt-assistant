@@ -22,6 +22,8 @@ bot.setWebHook(WEBHOOK_URL).then(() => {
 
 // Manejar mensajes
 bot.on('message', (msg) => {
+  console.log('mensaje recibido:', msg);
+
   const chatId = msg.chat.id;
   bot.sendMessage(chatId, 'Hola, soy tu bot. ¿Cómo puedo ayudarte?');
 });
@@ -29,10 +31,7 @@ bot.on('message', (msg) => {
 // MongoDB connection
 const connectToDatabase = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
