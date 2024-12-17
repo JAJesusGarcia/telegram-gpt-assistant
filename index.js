@@ -1,7 +1,10 @@
-import dotenv from 'dotenv';
-import TelegramBot from 'node-telegram-bot-api';
-import mongoose from 'mongoose';
 import OpenAI from 'openai';
+import express from 'express';
+import bodyParser from 'body-parser';
+import { Telegraf } from 'telegraf';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+
 import Conversation from './models/Conversation.js';
 import {
   isValidFamilySize,
@@ -12,173 +15,107 @@ import {
 
 dotenv.config();
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${TOKEN}`;
+const app = express();
+app.use(bodyParser.json());
 
-// Inicializa el bot antes de configurarlo
-const bot = new TelegramBot(TOKEN, { webHook: true });
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// Configura el webhook después de inicializar el bot
-bot.setWebHook(WEBHOOK_URL).then(() => {
-  console.log(`Webhook configurado correctamente en ${WEBHOOK_URL}`);
-});
-
-// Manejar mensajes
-bot.on('message', (msg) => {
-  console.log('mensaje recibido:', msg);
-
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, 'Hola, soy tu bot. ¿Cómo puedo ayudarte?');
-});
-
-// MongoDB connection
-const connectToDatabase = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('Connected to MongoDB');
-  } catch (error) {
-    console.error('Error connecting to MongoDB:', error);
-    process.exit(1);
-  }
-};
-
+// Configura OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Helper functions
-const setUser = () => ({
-  userId: null,
-  conversation: [],
-  state: 'initial',
+// Configura la base de datos MongoDB
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch((err) => console.error('MongoDB connection error:', err));
+
+// Estado de la conversación
+const userState = {};
+
+// Lógica principal del bot
+bot.start((ctx) => {
+  ctx.reply('Welcome! Let’s get started. How many people are in your family?');
+  userState[ctx.from.id] = { state: 'askingFamilySize' };
 });
 
-const getResponseFromChatGPT = async (text) => {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: text }],
-      max_tokens: 150,
-      temperature: 0.7,
-    });
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id;
+  const userMessage = ctx.message.text;
+  const state = userState[userId]?.state;
 
-    return response?.choices[0]?.message?.content?.trim() || 'No response.';
-  } catch (error) {
-    console.error('Error with OpenAI:', error);
-    return 'Sorry, I couldn’t process that.';
+  if (!state) {
+    ctx.reply('Please type /start to begin.');
+    return;
   }
-};
 
-const saveConversation = async (userId, messages) => {
-  try {
-    const existingConversation = await Conversation.findOne({ userId });
-    if (existingConversation) {
-      existingConversation.messages.push(...messages);
-      await existingConversation.save();
+  if (state === 'askingFamilySize') {
+    if (isValidFamilySize(userMessage)) {
+      userState[userId] = { state: 'askingIncome', familySize: userMessage };
+      ctx.reply('What is your household income?');
     } else {
-      const newConversation = new Conversation({ userId, messages });
-      await newConversation.save();
+      ctx.reply(getErrorMessage(state));
     }
-    console.log('Conversation saved');
-  } catch (error) {
-    console.error('Error saving conversation:', error);
-  }
-};
+  } else if (state === 'askingIncome') {
+    if (isValidIncome(userMessage)) {
+      userState[userId].income = userMessage;
+      userState[userId].state = 'askingGender';
+      ctx.reply('What is your gender? (male, female, other)');
+    } else {
+      ctx.reply(getErrorMessage(state));
+    }
+  } else if (state === 'askingGender') {
+    if (isValidGender(userMessage)) {
+      userState[userId].gender = userMessage;
+      ctx.reply('Thank you! Let me process your data...');
 
-const handleUserMessage = async (User, message) => {
-  User.conversation.push({ sender: 'user', text: message });
+      try {
+        // Genera una respuesta de OpenAI
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant.',
+            },
+            {
+              role: 'user',
+              content: `Family size: ${userState[userId].familySize}, Income: ${userState[userId].income}, Gender: ${userState[userId].gender}`,
+            },
+          ],
+        });
 
-  let reply = '';
-  let validResponse = true;
+        const botResponse =
+          completion.choices[0]?.message?.content || 'Something went wrong.';
+        ctx.reply(botResponse);
 
-  switch (User.state) {
-    case 'initial':
-      reply = 'Hi! Are you looking for a health insurance plan? (Yes/No)';
-      User.state = 'askingHealthInsurance';
-      break;
+        // Guarda la conversación en MongoDB
+        await Conversation.create({
+          userId: userId,
+          messages: [
+            { sender: 'user', text: userMessage },
+            { sender: 'bot', text: botResponse },
+          ],
+        });
 
-    case 'askingHealthInsurance':
-      if (message.toLowerCase() === 'yes') {
-        reply = 'Great! What is your family size?';
-        User.state = 'askingFamilySize';
-      } else if (message.toLowerCase() === 'no') {
-        reply =
-          'Alright. Let me know if you need assistance with anything else!';
-        User.state = 'initial';
-      } else {
-        validResponse = false;
-        reply = 'Please respond with "Yes" or "No".';
+        delete userState[userId]; // Reinicia el estado del usuario
+      } catch (error) {
+        console.error('Error with OpenAI:', error);
+        ctx.reply('Oops! Something went wrong while processing your data.');
       }
-      break;
-
-    case 'askingFamilySize':
-      if (isValidFamilySize(message)) {
-        reply = 'What is your household income?';
-        User.state = 'askingIncome';
-      } else {
-        validResponse = false;
-        reply = getErrorMessage(User.state);
-      }
-      break;
-
-    case 'askingIncome':
-      if (isValidIncome(message)) {
-        reply = 'What is your gender?';
-        User.state = 'askingGender';
-      } else {
-        validResponse = false;
-        reply = getErrorMessage(User.state);
-      }
-      break;
-
-    case 'askingGender':
-      if (isValidGender(message)) {
-        reply =
-          'Thank you for the information! If you have any more questions, feel free to ask.';
-        User.state = 'initial';
-      } else {
-        validResponse = false;
-        reply = getErrorMessage(User.state);
-      }
-      break;
-
-    default:
-      reply = 'I didn’t quite get that. Could you try again?';
-  }
-
-  if (validResponse) {
-    const gptReply = await getResponseFromChatGPT(message);
-    if (gptReply) {
-      reply += `\n\nChatGPT says: ${gptReply}`;
+    } else {
+      ctx.reply(getErrorMessage(state));
     }
   }
+});
 
-  User.conversation.push({ sender: 'bot', text: reply });
-  return reply;
-};
+// Inicia el webhook de Telegram
+const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/webhook`;
 
-// Main bot logic
-const motherJob = async () => {
-  try {
-    await connectToDatabase();
+app.use(bot.webhookCallback('/webhook'));
 
-    const User = setUser();
-
-    bot.on('message', async (msg) => {
-      const chatId = msg.chat.id;
-      User.userId = chatId;
-
-      console.log('Mensaje recibido:', msg.text);
-
-      const reply = await handleUserMessage(User, msg.text);
-
-      await saveConversation(chatId, User.conversation);
-
-      bot.sendMessage(chatId, reply);
-    });
-  } catch (error) {
-    console.error('Error in motherJob:', error);
-  }
-};
-
-motherJob();
+app.listen(3000, () => {
+  bot.telegram.setWebhook(WEBHOOK_URL);
+  console.log('Server running on port 3000');
+});
