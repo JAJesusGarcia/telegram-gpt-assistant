@@ -15,7 +15,10 @@ dotenv.config();
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const WEBHOOK_URL = `${process.env.WEBHOOK_BASE_URL}/bot${TOKEN}`;
 
+// Inicializa el bot antes de configurarlo
 const bot = new TelegramBot(TOKEN, { webHook: true });
+
+// Configura el webhook después de inicializar el bot
 bot.setWebHook(WEBHOOK_URL).then(() => {
   console.log(`Webhook configurado correctamente en ${WEBHOOK_URL}`);
 });
@@ -165,11 +168,7 @@ const motherJob = async () => {
       const chatId = msg.chat.id;
       User.userId = chatId;
 
-      if (User.state === 'initial') {
-        const initialReply = await handleUserMessage(User, '');
-        bot.sendMessage(chatId, initialReply);
-        return;
-      }
+      console.log('Mensaje recibido:', msg.text);
 
       const reply = await handleUserMessage(User, msg.text);
 
